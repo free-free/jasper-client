@@ -5,8 +5,6 @@ import wave
 import json
 import tempfile
 import logging
-import urllib
-import urlparse
 import re
 import subprocess
 from abc import ABCMeta, abstractmethod
@@ -15,6 +13,14 @@ import yaml
 import jasperpath
 import diagnose
 import vocabcompiler
+try:
+    from urllib import  urlencode
+except ImportError:
+    from urllib.parse import  urlencode
+try:
+    import urlparse
+except ImportError:
+    import urllib.parse as urlparse
 
 
 class AbstractSTTEngine(object):
@@ -621,6 +627,115 @@ class WitAiSTT(AbstractSTTEngine):
         return diagnose.check_network_connection()
 
 
+class BaiduSTT(AbstractSTTEngine):
+
+    SLUG = 'baidu'
+
+    def __init__(self, api_key, app_secret, language='zh'):
+        self._loggger = logging.getLogger(__name__)
+        self._token = None
+        self._api_key = api_key
+        self._app_secret = app_secret
+        self._http = requests.Session()
+        self.language = language
+        self.token
+        self._request_url = None
+
+    @property
+    def request_url(self):
+        return self._request_url
+
+    @property
+    def api_key(self):
+        return self._api_key
+
+    @api_key.setter
+    def api_key(self, value):
+        self._api_key = value
+
+    @property
+    def language(self):
+        return self._language
+
+    @language.setter
+    def language(self, value):
+        if value not in set(['zh', 'en', 'ct']):
+            raise ValueError("Not support language '%s' " % value)
+        self._language = value
+
+    @classmethod
+    def get_config(cls):
+        config = {}
+        profile_path = jasperpath.config('profile.yml')
+        if os.path.exists(profile_path):
+            with open(profile_path, 'r') as f:
+                profile = yaml.safe_load(f)
+                if 'baidu-stt' in profile:
+                    if 'api_key' in profile:
+                        config['api_key'] = profile['baidu-stt']['api_key']
+                    if 'app_secret' in profile:
+                        config['app_secret'] = profile['baidu-stt']['app_secret']
+        return config
+
+    @property
+    def token(self):
+        if not self._token:
+            headers = {'content-type': 'application/x-www-form-urlencoded',
+                       'accept': 'application/json'}
+            payload = {'client_id': self._api_key,
+                       'grant_type': 'client_credentials',
+                       'client_secret': self._app_secret}
+            resp = requests.post('https://openapi.baidu.com/oauth/2.0/token',
+                                 data=payload,
+                                 headers=headers)
+            self._token = resp.json()['access_token']
+        return self._token
+
+    def _get_response(self, data):
+        query = urlencode({'lan': self._language,
+                                  'cuid': '20:16:d8:7a:a8',
+                                  'token': self.token})
+        self._request_url = urlparse.urlunparse(('https', 'vop.baidu.com',
+            '/server_api', '', query, ''))
+        headers = {'content-type': 'audio/wav;rate=16000',
+                   'accept': 'application/json',
+                   'content-length': len(data)}
+        return requests.post(self._request_url,
+                             data=data,
+                             headers=headers)
+
+    def transcribe(self, fp):
+        data = fp.read()
+        resp = self._get_response(data)
+        try:
+            resp.raise_for_status()
+        except requests.exceptions.HTTPError:
+            self._loggger.critical('Request failed with response: %r',
+                                   resp.text,
+                                   exc_info=True)
+            return []
+        except requests.exceptions.RequestException:
+            self._loggger.critical('Request failed', exc_info=True)
+            return []
+        else:
+            transcribed = []
+            try:
+                transcribed = resp.json()['result']
+            except KeyError:
+                self._logger.critical('failed to perform speech-to-text',
+                                     exc_info=True)
+                return []
+            except Exception:
+                self._logger.critical('Server error', exc_info=True)
+                return []
+            else:
+                return transcribed
+
+    @classmethod
+    def is_available(cls):
+        return diagnose.check_network_connection()
+    
+
 def get_engine_by_slug(slug=None):
     """
     Returns:
@@ -659,3 +774,5 @@ def get_engines():
     return [tts_engine for tts_engine in
             list(get_subclasses(AbstractSTTEngine))
             if hasattr(tts_engine, 'SLUG') and tts_engine.SLUG]
+
+
