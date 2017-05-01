@@ -733,7 +733,7 @@ class BaiduSTT(AbstractSTTEngine):
 
     @classmethod
     def is_available(cls):
-        return diagnose.check_network_connection()
+        return diagnose.check_network_connection("www.baidu.com")
     
 
 def get_engine_by_slug(slug=None):
