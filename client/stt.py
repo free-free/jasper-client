@@ -671,9 +671,9 @@ class BaiduSTT(AbstractSTTEngine):
             with open(profile_path, 'r') as f:
                 profile = yaml.safe_load(f)
                 if 'baidu-stt' in profile:
-                    if 'api_key' in profile:
+                    if 'api_key' in profile['baidu-stt']:
                         config['api_key'] = profile['baidu-stt']['api_key']
-                    if 'app_secret' in profile:
+                    if 'app_secret' in profile['baidu-stt']:
                         config['app_secret'] = profile['baidu-stt']['app_secret']
         return config
 
