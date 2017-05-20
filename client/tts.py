@@ -800,10 +800,6 @@ def get_engines():
 
 
 if __name__ == '__main__':
-    tts = BaiduTTS('a4kN2O23SoOxd9S2PXZfGIZL', 'llKuLsRyeewEXAS7DfpGwxdZfDdqqsWK')
-    tts.say('雅安今天晴,温度20度')
-    exit(-1)
-
     parser = argparse.ArgumentParser(description='Jasper TTS module')
     parser.add_argument('--debug', action='store_true',
                         help='Show debug messages')
