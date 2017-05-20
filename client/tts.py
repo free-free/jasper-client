@@ -16,7 +16,6 @@ import pipes
 import logging
 import wave
 import urllib
-import urlparse
 import requests
 from abc import ABCMeta, abstractmethod
 
@@ -37,6 +36,16 @@ try:
     import pyvona
 except ImportError:
     pass
+
+try: 
+    from urllib import urlencode
+except ImportError:
+    from urllib.parse import urlencode
+
+try:
+    import urlparse
+except ImportError:
+    from urllib.parse import urlparse
 
 import diagnose
 import jasperpath
@@ -100,7 +109,7 @@ class AbstractMp3TTSEngine(AbstractTTSEngine):
             wav.setframerate(mf.samplerate())
             wav.setnchannels(1 if mf.mode() == mad.MODE_SINGLE_CHANNEL else 2)
             # 4L is the sample width of 32 bit audio
-            wav.setsampwidth(4L)
+            wav.setsampwidth(4)
             frame = mf.read()
             while frame is not None:
                 wav.writeframes(frame)
@@ -635,11 +644,123 @@ class IvonaTTS(AbstractMp3TTSEngine):
         os.remove(tmpfile)
 
 
+
+
+class BaiduTTS(AbstractMp3TTSEngine):
+
+    SLUG = "baidu-tts"
+
+    def __init__(self, api_key, app_secret):
+        super(type(self), self).__init__()
+        self._logger = logging.getLogger(__name__)
+        self._language = 'zh'
+        self._token = None
+        self._api_key = api_key
+        self._app_secret = app_secret
+        self._http = requests.Session()
+        self._config = self.get_config()
+
+    @classmethod
+    def is_available(cls):
+        return (super(cls, cls).is_available() and 
+                diagnose.check_network_connection('www.baidu.com'))
+
+    @classmethod
+    def get_config(cls):
+        config = {}
+        profile_path = jasperpath.config("profile.yaml")
+        if os.path.exists(profile_path):
+            with open(profile_path, 'r') as f:
+                profile = yaml.safe_load(f)
+                if 'baidu-tts' in profile:
+                    if 'api_key' in profile['baidu-tts']:
+                        config['api_key'] = profile['baidu-tts']['api_key']
+                    if 'app_secret' in profile['baidu-tts']:
+                        config['app_secret'] = profile['baidu-tts']['app_secret']
+                    if 'voice_speed' in profile['baidu-tts']:
+                        config['voice_speed'] = profile['baidu-tts']['voice_speed']
+                    if 'voice_pitch' in profile['baidu-tts']:
+                        config['voice_pitch'] = profile['baidu-tts']['voice_pitch']
+                    if 'voice_volume' in profile['baidu-tts']:
+                        config['voice_volume'] = profile['baidu-tts']['voice_volume']
+                    if 'voice_type' in profile['baidu-tts']:
+                        config['voice_type'] = profile['baidu-tts']['voice_type']
+        return config
+
+    @property
+    def language(self):
+        return self._language
+
+    @language.setter
+    def language(self, value):
+        if value not in ('zh', ):
+            raise ValueError("No'%s' language support" % value)
+        self._language = value
+
+    @property
+    def token(self):
+        if not self._token:
+            headers = {'content-type': 'application/x-www-form-urlencoded',
+                'accept': 'application/json'}
+            payload = {'client_id': self._api_key,
+                        'grant_type': 'client_credentials',
+                        'client_secret': self._app_secret}
+            try:
+                resp = self._http.post('https://openapi.baidu.com/oauth/2.0/token',
+                        data=payload, headers=headers)
+                self._token = resp.json()['access_token']
+            except KeyError:
+                self._logger.error("failed to fetch baidu tts token!")
+        return self._token
+
+    def _get_audio(self, text, audiofile_name, **kwargs):
+        if len(text) > 1024:
+            self._logger.error("text is too long")
+            return 
+        payload = {'tex': text,
+            'lan': self._language,
+            'tok': self.token,
+            'ctp': 1,
+            'cuid': '20:16:d8:c9:7a:a8',
+            'spd': kwargs.get('voice_speed', 5),
+            'pit': kwargs.get('voice_pitch', 5),
+            'vol': kwargs.get('voice_volume', 5),
+            'per': kwargs.get('voice_type', 1)}
+        headers = {'content-type': 'x-www-form-urlencoded'}
+        resp = self._http.post('http://tsn.baidu.com/text2audio',
+            data=payload, headers=headers)
+        try:
+            resp.raise_for_status()
+        except requests.exceptions.HTTPError:
+            self._logger.critical("request 'http://tsn.baidu.com/text2audio' failed with \
+                with response: %r", resp.text, exc_info=True)
+            return False
+        except requests.exceptions.RequestException:
+            self._logger.critical("request 'http://tsn.baidu.com/text2audio' failed", 
+                exc_info=True)
+            return False
+        else:
+            if resp.headers['content-type'] == 'audio/mp3':
+                with open(audiofile_name, 'wb') as fd:
+                    fd.write(resp.content)
+                return True
+            else:
+                self._logger.critical("failed to perform text-to-speech")
+                return False
+
+    def say(self, phrase):
+        with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
+            tmpfname = f.name
+        self._get_audio(phrase, tmpfname, **self._config)
+        self.play_mp3(tmpfname)
+        os.remove(tmpfname)
+
+
 def get_default_engine_slug():
     return 'osx-tts' if platform.system().lower() == 'darwin' else 'espeak-tts'
 
 
-def get_engine_by_slug(slug=None):
+def engine_by_slug(slug=None):
     """
     Returns:
         A speaker implementation available on the current platform
@@ -677,7 +798,12 @@ def get_engines():
             list(get_subclasses(AbstractTTSEngine))
             if hasattr(tts_engine, 'SLUG') and tts_engine.SLUG]
 
+
 if __name__ == '__main__':
+    tts = BaiduTTS('a4kN2O23SoOxd9S2PXZfGIZL', 'llKuLsRyeewEXAS7DfpGwxdZfDdqqsWK')
+    tts.say('雅安今天晴,温度20度')
+    exit(-1)
+
     parser = argparse.ArgumentParser(description='Jasper TTS module')
     parser.add_argument('--debug', action='store_true',
                         help='Show debug messages')
