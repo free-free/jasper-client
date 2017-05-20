@@ -668,7 +668,7 @@ class BaiduTTS(AbstractMp3TTSEngine):
     @classmethod
     def get_config(cls):
         config = {}
-        profile_path = jasperpath.config("profile.yaml")
+        profile_path = jasperpath.config("profile.yml")
         if os.path.exists(profile_path):
             with open(profile_path, 'r') as f:
                 profile = yaml.safe_load(f)
