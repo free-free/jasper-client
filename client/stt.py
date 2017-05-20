@@ -632,7 +632,7 @@ class BaiduSTT(AbstractSTTEngine):
     SLUG = 'baidu'
 
     def __init__(self, api_key, app_secret, language='zh'):
-        self._loggger = logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
         self._token = None
         self._api_key = api_key
         self._app_secret = app_secret
@@ -710,12 +710,12 @@ class BaiduSTT(AbstractSTTEngine):
         try:
             resp.raise_for_status()
         except requests.exceptions.HTTPError:
-            self._loggger.critical('Request failed with response: %r',
+            self._logger.critical('Request failed with response: %r',
                                    resp.text,
                                    exc_info=True)
             return []
         except requests.exceptions.RequestException:
-            self._loggger.critical('Request failed', exc_info=True)
+            self._logger.critical('Request failed', exc_info=True)
             return []
         else:
             transcribed = []
