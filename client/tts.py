@@ -760,7 +760,7 @@ def get_default_engine_slug():
     return 'osx-tts' if platform.system().lower() == 'darwin' else 'espeak-tts'
 
 
-def engine_by_slug(slug=None):
+def get_engine_by_slug(slug=None):
     """
     Returns:
         A speaker implementation available on the current platform
