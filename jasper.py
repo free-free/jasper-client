@@ -6,6 +6,12 @@ import sys
 import shutil
 import logging
 
+try:
+    reload(sys)
+    sys.setdefaultencoding("utf-8")
+except NameError:
+    pass
+
 import yaml
 import argparse
 
