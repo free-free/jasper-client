@@ -650,7 +650,7 @@ class BaiduTTS(AbstractMp3TTSEngine):
 
     SLUG = "baidu-tts"
 
-    def __init__(self, api_key, app_secret):
+    def __init__(self, api_key, app_secret, **kwargs):
         super(type(self), self).__init__()
         self._logger = logging.getLogger(__name__)
         self._language = 'zh'
